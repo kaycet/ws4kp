@@ -7,32 +7,34 @@
     .weather-display .main.bearcam {
       position: relative;
       overflow: hidden;
-      background: #000;
+      /* the classic gradient shows through as thin rails either side of the
+         video (frame starts 90px below the display top — offset to line up) */
+      background: url(../images/backgrounds/1.png) no-repeat 0 -90px;
     }
     .weather-display .main.bearcam .bearcam-frame {
-      /* COVER-crop: size the 16:9 player to fill the whole panel and center it,
-         cropping the spill (iframes can't object-fit). Standard panel is
-         640x310 -> fill width at 640x360, crop 25px top+bottom. */
+      /* COVER-crop between the rails: 20px of gradient each side, player sized
+         to fill 600x310 (fill width, crop ~15px top+bottom). */
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 640px;
-      height: 361px;
+      width: 600px;
+      height: 339px;
       border: 0;
       display: block;
       background: #000;
     }
     /* Widescreen: stock wide mode keeps a 640px panel offset by the 107px
-       margin — for the cam we take the full 854px canvas edge to edge. */
+       margin — the cam takes the full 854px canvas with 24px gradient rails. */
     .wide .weather-display .main.bearcam {
       left: 0;
       width: 854px;
+      background-image: url(../images/backgrounds/1-wide.png);
     }
-    /* 854x310 panel -> fill width at 854x480, crop 85px top+bottom */
+    /* 806x310 between the rails -> fill width at 806x454, crop 72px top+bottom */
     .wide .weather-display .main.bearcam .bearcam-frame {
-      width: 854px;
-      height: 481px;
+      width: 806px;
+      height: 454px;
     }
     .weather-display .main.bearcam .bearcam-caption {
       position: absolute;
