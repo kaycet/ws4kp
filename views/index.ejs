@@ -65,6 +65,7 @@
   <script type="module" src="scripts/modules/settings.mjs"></script>
   <script type="module" src="scripts/modules/media.mjs"></script>
   <script type="module" src="scripts/modules/custom-scroll-text.mjs"></script>
+  <script type="module" src="scripts/modules/bearcam.mjs"></script>
   <script type="module" src="scripts/index.mjs"></script>
   <% } %>
 
@@ -134,6 +135,9 @@
         </div>
         <div id="hazards-html" class="weather-display">
           <%- include('partials/hazards.ejs') %>
+        </div>
+        <div id="bearcam-html" class="weather-display">
+          <%- include('partials/bearcam.ejs') %>
         </div>
         <%- include('partials/scroll.ejs') %>
       </div>

@@ -1,0 +1,36 @@
+<%- include('header.ejs', {title:'Bear Cam', hasTime: true}) %>
+<div class="main bearcam">
+  <style>
+    /* scoped here so the cam needs no scss pipeline change */
+    .weather-display .main.bearcam {
+      /* fill the 640x480 display below the 90px header */
+      position: relative;
+      width: 100%;
+      height: 390px;
+      overflow: hidden;
+      background: #000;
+    }
+    .weather-display .main.bearcam .bearcam-frame {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      display: block;
+      background: #000;
+    }
+    .weather-display .main.bearcam .bearcam-caption {
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      padding: 2px 12px;
+      font-family: 'Star4000';
+      font-size: 24pt;
+      color: #fff;
+      text-shadow: 3px 3px 0 #000;
+      pointer-events: none;
+    }
+  </style>
+  <!-- src attached by bearcam.mjs only while this display is shown.
+       referrerpolicy must send at least the origin: YouTube refuses embeds with
+       no referer (Error 153 "video player configuration error"). -->
+  <iframe class="bearcam-frame" referrerpolicy="strict-origin-when-cross-origin" allow="autoplay; fullscreen" allowfullscreen></iframe>
+  <div class="bearcam-caption">Live &middot; Brooks Falls, Katmai N.P.</div>
+</div>
