@@ -294,7 +294,7 @@ const bearcamOverride = (curIdx, idx) => {
 	bearcamState.since += 1;
 	if (bearcamState.since >= bearcamEvery) {
 		bearcamState.since = 0;
-		bearcamState.resumeIdx = idx;   // continue here after the bears
+		bearcamState.resumeIdx = idx; // continue here after the bears
 		return bearIdx;
 	}
 	return idx;
