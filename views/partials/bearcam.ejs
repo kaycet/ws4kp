@@ -1,30 +1,29 @@
 <%- include('header.ejs', {title:'Bear Cam', hasTime: true}) %>
-<div class="main bearcam">
+<div class="main has-scroll bearcam">
   <style>
-    /* scoped here so the cam needs no scss pipeline change */
+    /* scoped here so the cam needs no scss pipeline change. has-scroll gives the
+       standard layout — 90px top banner, 310px panel, blue scroll banner below —
+       so the scrolling conditions text sits on the banner, not on the video. */
     .weather-display .main.bearcam {
-      /* fill the 640x480 display below the 90px header */
       position: relative;
-      width: 100%;
-      height: 390px;
       overflow: hidden;
       background: #000;
     }
     .weather-display .main.bearcam .bearcam-frame {
       /* COVER-crop: size the 16:9 player to fill the whole panel and center it,
          cropping the spill (iframes can't object-fit). Standard panel is
-         640x390 -> fill height, crop ~27px off each side. */
+         640x310 -> fill width at 640x360, crop 25px top+bottom. */
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 694px;
-      height: 391px;
+      width: 640px;
+      height: 361px;
       border: 0;
       display: block;
       background: #000;
     }
-    /* Widescreen panel is 854x390 -> fill width at 854x480, crop 45px top+bottom */
+    /* Widescreen panel is 854x310 -> fill width at 854x480, crop 85px top+bottom */
     .wide .weather-display .main.bearcam .bearcam-frame {
       width: 854px;
       height: 481px;
