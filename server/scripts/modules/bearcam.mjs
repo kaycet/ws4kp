@@ -15,9 +15,11 @@ class BearCam extends WeatherDisplay {
 		super(navId, elemId, 'Bear Cam', true);
 
 		this.timing.totalScreens = 1;
-		// ~45s of bears per cycle (5 base delays of 9s); the stream needs a few
-		// seconds to join, so a single 9s slot would be mostly buffering.
-		this.timing.delay = [5];
+		// ~27s per visit (3 base delays of 9s): long enough that the stream's
+		// few-second join doesn't eat the slot, short enough that the frequent
+		// interleaved visits (navigation.mjs bearcamEvery) don't drown the
+		// weather. Raise to [5] for longer soaks.
+		this.timing.delay = [3];
 
 		this.videoId = new URLSearchParams(window.location.search).get('bearcam') || DEFAULT_VIDEO_ID;
 	}

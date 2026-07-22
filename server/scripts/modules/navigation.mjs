@@ -254,6 +254,52 @@ const navTo = (direction) => {
 	if (direction === msg.command.previousFrame) currentDisplay().navPrev();
 };
 
+// BEARCAM INTERLEAVE (fork): visit the bear cam after every N other displays
+// instead of once per cycle. N defaults to 2 (weather, weather, bears, ...);
+// ?bearcam-every=N overrides, 0 restores stock behavior. The rotation position
+// is saved when the bears cut in and restored afterwards, so the weather
+// sequence continues where it left off instead of restarting. Forward
+// navigation only, and only while the bear display is loaded + enabled.
+const bearcamEvery = (() => {
+	const raw = new URLSearchParams(window.location.search).get('bearcam-every');
+	const n = parseInt(raw ?? '2', 10);
+	return Number.isNaN(n) || n < 0 ? 2 : n;
+})();
+const bearcamState = { since: 0, resumeIdx: -1 };
+
+const bearcamOverride = (curIdx, idx) => {
+	if (bearcamEvery <= 0) return idx;
+	const bearIdx = displays.findIndex((d) => d?.elemId === 'bearcam');
+	if (bearIdx === -1) return idx;
+	const bear = displays[bearIdx];
+	if (bear.status !== STATUS.loaded || bear.timing.totalScreens === 0 || !bear.enabled) return idx;
+	// leaving the bears: reset the counter and resume the saved weather position
+	if (curIdx === bearIdx) {
+		bearcamState.since = 0;
+		const resume = bearcamState.resumeIdx;
+		bearcamState.resumeIdx = -1;
+		if (resume !== -1 && resume !== bearIdx && displays[resume]
+			&& displays[resume].status === STATUS.loaded && displays[resume].timing.totalScreens > 0) {
+			return resume;
+		}
+		return idx;
+	}
+	// landed on the bears naturally (end of cycle): counter resets, no resume
+	if (idx === bearIdx) {
+		bearcamState.since = 0;
+		bearcamState.resumeIdx = -1;
+		return idx;
+	}
+	// another weather panel is about to show — after N of them, bears cut in
+	bearcamState.since += 1;
+	if (bearcamState.since >= bearcamEvery) {
+		bearcamState.since = 0;
+		bearcamState.resumeIdx = idx;   // continue here after the bears
+		return bearIdx;
+	}
+	return idx;
+};
+
 // find the next or previous available display
 const loadDisplay = (direction) => {
 	const totalDisplays = displays.length;
@@ -284,6 +330,9 @@ const loadDisplay = (direction) => {
 		console.warn('No suitable display found for navigation');
 		return;
 	}
+
+	// interleave the bear cam into forward rotation (no-op when disabled/absent)
+	if (direction > 0) idx = bearcamOverride(curIdx, idx);
 
 	const newDisplay = displays[idx];
 	// hide all displays
