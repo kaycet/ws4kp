@@ -23,7 +23,13 @@
       display: block;
       background: #000;
     }
-    /* Widescreen panel is 854x310 -> fill width at 854x480, crop 85px top+bottom */
+    /* Widescreen: stock wide mode keeps a 640px panel offset by the 107px
+       margin — for the cam we take the full 854px canvas edge to edge. */
+    .wide .weather-display .main.bearcam {
+      left: 0;
+      width: 854px;
+    }
+    /* 854x310 panel -> fill width at 854x480, crop 85px top+bottom */
     .wide .weather-display .main.bearcam .bearcam-frame {
       width: 854px;
       height: 481px;
