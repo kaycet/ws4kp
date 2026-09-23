@@ -69,7 +69,7 @@ Performance and cost choices:
 - **Cheap rendering.** The scene renders at native 320×180 and CSS upscales it (`image-rendering: pixelated`). The UI patches the DOM at 10 Hz, only where values changed.
 - **Wall-clock simulation.** Both saves advance by wall-clock time in bounded chunks, so hidden tabs and reloads catch up accurately.
 - **Untrusted saves.** Saves go through `hydrate()`, which drops unknown ids, clamps numbers, strips markup from names, and validates trial and record shapes.
-- **Small deploy.** The whole deploy is about 160 KB uncompressed, served from unprivileged nginx with a tight CSP.
+- **Small deploy.** The whole deploy is about 175 KB uncompressed, served from unprivileged nginx with a tight CSP.
 
 ### Toward real leaderboards
 
