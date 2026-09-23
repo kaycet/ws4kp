@@ -15,5 +15,6 @@ COPY static-env-handler.sh /docker-entrypoint.d/01-static-env-handler.sh
 RUN chmod +x /docker-entrypoint.d/01-static-env-handler.sh
 
 COPY --from=node-builder /app/dist /usr/share/nginx/html
+COPY wizard-idle /usr/share/nginx/html/wizard-idle
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 CMD ["nginx", "-g", "daemon off;"]
