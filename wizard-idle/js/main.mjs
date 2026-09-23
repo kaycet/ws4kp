@@ -1,12 +1,16 @@
 import * as E from './engine.mjs';
+import * as R from './rift.mjs';
 import { Scene, W, H } from './scene.mjs';
 import UI, { toast } from './ui.mjs';
 import Sfx from './audio.mjs';
-import { ACHIEVEMENT_BY_ID, SPELL_BY_ID, TALENT_BY_ID } from './data.mjs';
+import {
+	ACHIEVEMENT_BY_ID, SPELL_BY_ID, TALENT_BY_ID, RELIC_BY_ID, GEN_BY_ID,
+} from './data.mjs';
 import { spriteCanvas } from './sprites.mjs';
 import { formatNumber } from './format.mjs';
 
-const SAVE_KEY = 'starfall-spire-save-v1';
+const MAIN_KEY = 'starfall-spire-save-v1';
+const TRIAL_KEY = 'starfall-spire-rift-v1';
 const AUTOSAVE_MS = 15000;
 const MAX_MANUAL_CPS = 20;
 const ORB_TARGET = { x: 156, y: 108 };
@@ -14,11 +18,13 @@ const ORB_TARGET = { x: 156, y: 108 };
 // Storage can be missing or throw (private mode, sandboxed frames), so every
 // access is guarded and the game simply runs without persistence.
 const storage = {
-	get() { try { return localStorage.getItem(SAVE_KEY); } catch { return null; } },
-	set(value) { try { localStorage.setItem(SAVE_KEY, value); return true; } catch { return false; } },
+	get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+	set(key, value) { try { localStorage.setItem(key, value); return true; } catch { return false; } },
+	remove(key) { try { localStorage.removeItem(key); } catch { /* storage unavailable */ } },
 };
 
 const tryDecode = (text) => {
+	if (!text) return null;
 	try { return E.decodeSave(text); } catch { return null; }
 };
 
@@ -32,38 +38,76 @@ const wandCursor = () => {
 	return `url(${c.toDataURL()}) 17 1, pointer`;
 };
 
-const start = (hotData = {}) => {
-	let state = hotData?.save ? tryDecode(hotData.save) : null;
-	const fromHot = !!state;
-	let restored = false;
-	if (!state) {
-		const raw = storage.get();
-		state = raw ? tryDecode(raw) : null;
-		restored = !!state;
+// Advance a state by dt seconds of wall-clock time ending at wallMs, in
+// bounded chunks so long gaps (hidden tabs) stay accurate but cheap.
+const advance = (state, dt, wallMs) => {
+	if (!(dt > 0)) return;
+	const steps = dt > 1 ? Math.min(600, Math.ceil(dt)) : 1;
+	const chunk = dt / steps;
+	for (let i = 0; i < steps; i += 1) {
+		E.tick(state, chunk, wallMs - (dt - chunk * (i + 1)) * 1000);
 	}
-	if (!state) state = E.createState();
+};
+
+const start = (hotData = {}) => {
+	let main = tryDecode(hotData?.save);
+	const fromHot = !!main;
+	let restored = false;
+	if (!main) {
+		main = tryDecode(storage.get(MAIN_KEY));
+		restored = !!main;
+	}
+	if (!main) main = E.createState();
+	let trial = tryDecode(hotData?.trial ?? storage.get(TRIAL_KEY));
+	if (trial && !E.isTrial(trial)) trial = null;
 
 	const canvas = document.getElementById('scene');
 	const game = {
-		state,
+		main,
+		trial,
 		sfx: new Sfx(),
 		scene: new Scene(canvas),
+		rivalCache: new Map(),
+		get state() { return this.trial || this.main; },
 	};
-	game.sfx.enabled = state.settings.sound;
-	game.scene.reducedFx = state.settings.reducedFx;
+	game.sfx.enabled = main.settings.sound;
+	game.scene.reducedFx = main.settings.reducedFx;
 	canvas.style.cursor = wandCursor();
 
 	game.save = () => {
-		game.state.lastSave = Date.now();
-		return storage.set(E.encodeSave(game.state));
+		const now = Date.now();
+		game.main.lastSave = now;
+		const ok = storage.set(MAIN_KEY, E.encodeSave(game.main));
+		if (game.trial) {
+			game.trial.lastSave = now;
+			storage.set(TRIAL_KEY, E.encodeSave(game.trial));
+		} else {
+			storage.remove(TRIAL_KEY);
+		}
+		return ok;
 	};
 
+	// Rival echoes are deterministic per rift, so they are computed once
+	// (about 0.1s) and cached for the session.
+	game.rivals = (t) => {
+		if (!game.rivalCache.has(t.id)) {
+			const rivals = R.rivalsFor(t);
+			game.rivalCache.set(t.id, { rivals, thresholds: R.tierThresholds(rivals) });
+		}
+		return game.rivalCache.get(t.id);
+	};
+	game.leaderboard = new R.LocalLeaderboard((t) => game.rivals(t).rivals);
+	game.currentRift = () => R.trialForTime(Date.now());
+
 	let ui = null;
+	const resetScene = () => { game.scene.walkers = { apprentice: [], golem: [] }; };
+
 	game.replaceState = (next) => {
-		game.state = next;
+		game.main = next;
+		game.trial = null;
 		game.sfx.enabled = next.settings.sound;
 		game.scene.reducedFx = next.settings.reducedFx;
-		game.scene.walkers = { apprentice: [], golem: [] };
+		resetScene();
 		E.drainEvents(next);
 		ui.rebind();
 		game.save();
@@ -75,27 +119,72 @@ const start = (hotData = {}) => {
 	};
 
 	game.ascend = () => {
-		if (E.ascend(game.state)) {
-			game.scene.walkers = { apprentice: [], golem: [] };
+		if (E.ascend(game.main)) {
+			resetScene();
 			game.save();
 			ui.showTab('starfall');
 		}
 	};
 
-	ui = new UI(game);
-	window.claude?.hot?.snapshot?.(() => ({ save: E.encodeSave(game.state) }));
+	game.enterRift = () => {
+		game.sfx.ensure();
+		if (!game.trial) {
+			const rift = game.currentRift();
+			game.rivals(rift);
+			game.trial = R.createTrialState(rift, Date.now(), game.main.settings);
+		}
+		resetScene();
+		game.scene.riftFx();
+		ui.rebind();
+		ui.showTab('summons');
+		game.save();
+	};
 
+	game.endRift = () => {
+		const t = game.trial;
+		if (!t) return;
+		const { thresholds } = game.rivals(t.trial);
+		const result = R.finishTrial(game.main, t, thresholds);
+		const name = game.main.settings.wizardName || 'You';
+		game.leaderboard.submit(t.trial.id, { name, score: result.score });
+		game.trial = null;
+		resetScene();
+		E.drainEvents(t);
+		game.save();
+		ui.rebind();
+		game.leaderboard.standings(t.trial, { name, score: result.score }).then((standings) => {
+			ui.showTrialResult(t.trial, result, standings, thresholds);
+		});
+	};
+
+	ui = new UI(game);
+	window.claude?.hot?.snapshot?.(() => ({
+		save: E.encodeSave(game.main),
+		trial: game.trial ? E.encodeSave(game.trial) : null,
+	}));
+
+	const now = Date.now();
 	if (restored) {
-		const report = E.applyOffline(game.state, Date.now());
+		const report = E.applyOffline(game.main, now);
 		if (report && report.amount > 0) ui.showOffline(report);
 	} else if (fromHot) {
-		game.state.lastSave = Date.now();
+		game.main.lastSave = now;
+	}
+	if (game.trial) {
+		// The rift clock kept running while the page was closed.
+		const until = Math.min(now, game.trial.trial.endsAt);
+		advance(game.trial, Math.max(0, (until - game.trial.lastSave) / 1000), until);
+		E.drainEvents(game.trial);
+		if (now >= game.trial.trial.endsAt) game.endRift();
+		else ui.rebind();
 	}
 
 	// Events -> effects ----------------------------------------------------
-	const handleEvents = (dt, visible) => {
-		E.drainEvents(game.state).forEach((ev) => {
-			const { scene, sfx } = game;
+	const handleEvents = (state, dt, visible, foreground) => {
+		const { scene, sfx } = game;
+		const fmt = (n) => formatNumber(n, game.state.settings.notation);
+		E.drainEvents(state).forEach((ev) => {
+			if (!foreground && ev.type !== 'achievement') return;
 			switch (ev.type) {
 				case 'fireball':
 					if (visible) scene.fireballFx(ev.amount);
@@ -114,14 +203,17 @@ const start = (hotData = {}) => {
 				case 'spell':
 					if (visible) scene.spellFx(ev.id);
 					sfx.spell();
-					if (ev.amount) toast('loom', SPELL_BY_ID[ev.id].name, `+${formatNumber(ev.amount, game.state.settings.notation)} mana`, 'mana');
+					if (ev.amount) toast('loom', SPELL_BY_ID[ev.id].name, `+${fmt(ev.amount)} mana`, 'mana');
 					break;
-				case 'achievement': {
-					const a = ACHIEVEMENT_BY_ID[ev.id];
+				case 'align':
+					if (visible) scene.alignFx();
+					sfx.tone(988, 0.3, { type: 'sine', vol: 0.3, slide: 1480 });
+					toast(ev.gens[0], 'The stars align:', `${ev.gens.map((id) => GEN_BY_ID[id].name).join(' & ')} ×${formatNumber(ev.mult)}`, 'mana');
+					break;
+				case 'achievement':
 					sfx.achievement();
-					toast('trophy', 'Feat:', a.name);
+					toast('trophy', 'Feat:', ACHIEVEMENT_BY_ID[ev.id].name);
 					break;
-				}
 				case 'ascend':
 					scene.ascendFx();
 					sfx.ascend();
@@ -129,6 +221,10 @@ const start = (hotData = {}) => {
 					break;
 				case 'talent':
 					toast(TALENT_BY_ID[ev.id].icon, TALENT_BY_ID[ev.id].name, `rank ${ev.level}`, 'mana');
+					break;
+				case 'relic':
+					sfx.upgrade();
+					toast(RELIC_BY_ID[ev.id].icon, 'Relic claimed:', RELIC_BY_ID[ev.id].name, 'rift');
 					break;
 				default:
 			}
@@ -138,10 +234,10 @@ const start = (hotData = {}) => {
 	// Input ------------------------------------------------------------------
 	const recentCasts = [];
 	const manualCast = (x, y) => {
-		const now = performance.now();
-		while (recentCasts.length && now - recentCasts[0] > 1000) recentCasts.shift();
+		const t = performance.now();
+		while (recentCasts.length && t - recentCasts[0] > 1000) recentCasts.shift();
 		if (recentCasts.length >= MAX_MANUAL_CPS) return;
-		recentCasts.push(now);
+		recentCasts.push(t);
 		const { amount } = E.cast(game.state);
 		game.scene.castFx(x, y, amount);
 		game.sfx.cast();
@@ -180,19 +276,21 @@ const start = (hotData = {}) => {
 	});
 
 	// Loop ---------------------------------------------------------------------
-	// Simulation advances by wall-clock time, so throttled or hidden tabs catch
-	// up in bounded chunks instead of drifting.
+	// Both saves advance by wall-clock time: the main spire keeps working while
+	// you run a trial, and the trial clock is capped at its end time.
 	let last = performance.now();
 	const step = () => {
-		const now = performance.now();
-		const dt = (now - last) / 1000;
-		last = now;
+		const t = performance.now();
+		const dt = (t - last) / 1000;
+		last = t;
 		if (!(dt > 0)) return 0;
-		if (dt > 1) {
-			const n = Math.min(600, Math.ceil(dt));
-			for (let i = 0; i < n; i += 1) E.tick(game.state, dt / n);
-		} else {
-			E.tick(game.state, dt);
+		const wall = Date.now();
+		advance(game.main, dt, wall);
+		if (game.trial) {
+			const { endsAt } = game.trial.trial;
+			const until = Math.min(wall, endsAt);
+			advance(game.trial, Math.min(dt, Math.max(0, (until - (wall - dt * 1000)) / 1000)), until);
+			if (wall >= endsAt) game.endRift();
 		}
 		return dt;
 	};
@@ -200,7 +298,8 @@ const start = (hotData = {}) => {
 	let uiAcc = 0;
 	const frame = () => {
 		const dt = step();
-		handleEvents(dt, true);
+		if (game.trial) handleEvents(game.main, dt, false, false);
+		handleEvents(game.state, dt, true, true);
 		game.scene.render(game.state, Math.min(dt, 0.1));
 		uiAcc += dt;
 		if (uiAcc >= 0.1) {
@@ -214,7 +313,8 @@ const start = (hotData = {}) => {
 	setInterval(() => {
 		if (!document.hidden) return;
 		step();
-		handleEvents(0, false);
+		if (game.trial) handleEvents(game.main, 0, false, false);
+		handleEvents(game.state, 0, false, true);
 	}, 1000);
 
 	setInterval(() => game.save(), AUTOSAVE_MS);

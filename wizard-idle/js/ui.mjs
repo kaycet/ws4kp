@@ -1,8 +1,9 @@
 // DOM layer. Rows are built once and then patched in place; setText/setClass
 // skip writes when nothing changed, so a 10 Hz refresh costs almost nothing.
 import * as E from './engine.mjs';
+import * as R from './rift.mjs';
 import {
-	GENERATORS, SPELLS, TALENTS, ACHIEVEMENTS, TALENT_BY_ID, UPGRADE_BY_ID,
+	GENERATORS, SPELLS, TALENTS, ACHIEVEMENTS, TALENT_BY_ID, UPGRADE_BY_ID, RELICS, MUTATOR_BY_ID, GEN_BY_ID,
 } from './data.mjs';
 import { formatNumber, formatTime } from './format.mjs';
 import { iconURL } from './sprites.mjs';
@@ -123,11 +124,21 @@ export default class UI {
 		this.bindUpgrades();
 		this.bindStarfall();
 		this.bindTome();
+		this.buildRift();
 		bindTooltip();
 		this.rebind();
 	}
 
+	// Active state (the trial while one runs) vs. the persistent main save.
 	get s() { return this.game.state; }
+
+	get m() { return this.game.main; }
+
+	// Settings live on both saves so a trial inherits them; keep them in sync.
+	eachState(fn) {
+		fn(this.game.main);
+		if (this.game.trial) fn(this.game.trial);
+	}
 
 	fmt(n) { return formatNumber(n, this.s.settings.notation); }
 
@@ -138,6 +149,12 @@ export default class UI {
 		this.buffKey = null;
 		this.featCount = -1;
 		this.slowAcc = 1;
+		this.riftKey = null;
+		this.ladderKey = null;
+		const inRift = E.isTrial(this.s);
+		document.body.classList.toggle('in-rift', inRift);
+		$('rift-hud').hidden = !inRift;
+		$('wizard-name').value = this.m.settings.wizardName;
 		$('opt-sound').checked = this.s.settings.sound;
 		$('opt-sci').checked = this.s.settings.notation === 'sci';
 		$('opt-fx').checked = this.s.settings.reducedFx;
@@ -240,9 +257,13 @@ export default class UI {
 			const owned = s.gens[row.g.id];
 			setText(row.name, row.g.name);
 			const each = r.perGen[row.g.id];
+			const align = E.currentAlignment(s);
+			const aligned = !!align?.gens.includes(row.g.id);
+			setClass(row.row, 'aligned', aligned);
+			const tag = aligned ? `✦ Aligned ×${this.fmt(align.mult)} · ` : '';
 			setText(row.desc, owned
-				? `${this.fmt(each)}/s each · ${this.fmt(each * owned)}/s (${share(each * owned, total)})`
-				: `${row.g.flavor} +${this.fmt(each)}/s`);
+				? `${tag}${this.fmt(each)}/s each · ${this.fmt(each * owned)}/s (${share(each * owned, total)})`
+				: `${tag}${row.g.flavor} +${this.fmt(each)}/s`);
 			setText(row.owned, String(owned));
 			let n = amt === 'max' ? E.maxAffordable(s, row.g.id) : amt;
 			let label = '';
@@ -283,7 +304,7 @@ export default class UI {
 				const main = el('div');
 				main.append(el('div', 'row-name', u.name), el('div', 'row-desc', u.desc));
 				const side = el('div', 'row-side');
-				const cost = el('div', 'row-cost cost-mana', this.fmt(u.cost));
+				const cost = el('div', 'row-cost cost-mana', this.fmt(E.upgradeCost(s, u)));
 				side.append(cost);
 				row.append(img(iconURL(u.icon, { tier: u.tier }), ''), main, side);
 				row.addEventListener('click', () => {
@@ -299,11 +320,12 @@ export default class UI {
 		}
 		let affordable = 0;
 		this.upgradeRows.forEach(({ u, row, cost }) => {
-			const can = s.mana >= u.cost;
+			const price = E.upgradeCost(s, u);
+			const can = s.mana >= price;
 			if (can) affordable += 1;
 			setClass(row, 'affordable', can);
 			setClass(row, 'unaffordable', !can);
-			setText(cost, this.fmt(u.cost));
+			setText(cost, this.fmt(price));
 		});
 		const badge = $('upgrade-badge');
 		badge.hidden = affordable === 0;
@@ -367,10 +389,20 @@ export default class UI {
 	updateBuffs() {
 		const { s } = this;
 		const wrap = $('buffs');
-		const key = s.buffs.map((b) => b.id).join(',');
+		const align = E.currentAlignment(s);
+		const key = `${align?.key}|${s.buffs.map((b) => b.id).join(',')}`;
 		if (key !== this.buffKey) {
 			this.buffKey = key;
 			wrap.replaceChildren();
+			this.alignTime = null;
+			if (align) {
+				const chip = el('span', 'buff buff-align');
+				chip.append(el('b', '', `✦ ${align.gens.map((id) => GEN_BY_ID[id].name).join(' & ')} aligned ×${this.fmt(align.mult)}`));
+				this.alignTime = el('span', '', '');
+				chip.append(this.alignTime);
+				chip.dataset.tip = 'Celestial Alignment|Every few minutes the sky favours one of your summons. Everyone shares the same sky.';
+				wrap.append(chip);
+			}
 			this.buffRows = s.buffs.map((b) => {
 				const chip = el('span', `buff buff-${b.kind}`);
 				const label = el('b', '', `${b.name} ×${b.mult}`);
@@ -384,6 +416,7 @@ export default class UI {
 			const b = s.buffs.find((x) => x.id === row.id);
 			if (b) setText(row.time, `${Math.ceil(b.remaining)}s`);
 		});
+		if (align && this.alignTime) setText(this.alignTime, formatTime(Math.max(0, (align.endsAt - Date.now()) / 1000)));
 	}
 
 	// Starfall ------------------------------------------------------------
@@ -392,7 +425,7 @@ export default class UI {
 	}
 
 	confirmAscend() {
-		const { s } = this;
+		const s = this.m;
 		const gained = E.pendingSigils(s);
 		if (gained < 1) return;
 		const per = E.SIGIL_BASE_BONUS + 0.005 * E.talentLevel(s, 'resonance');
@@ -419,7 +452,7 @@ export default class UI {
 			const cost = el('div', 'talent-cost', '');
 			card.append(img(iconURL(t.icon), ''), head, desc, cost);
 			card.addEventListener('click', () => {
-				if (E.buyTalent(this.s, t.id)) {
+				if (E.buyTalent(this.m, t.id)) {
 					this.game.sfx.upgrade();
 					this.slowAcc = 1;
 					this.update(0);
@@ -433,10 +466,12 @@ export default class UI {
 	}
 
 	updateStarfall() {
-		const { s } = this;
+		const s = this.m;
 		const pending = E.pendingSigils(s);
 		setText($('pending-sigils'), this.fmt(pending));
-		$('ascend-btn').disabled = pending < 1;
+		const inRift = !!this.game.trial;
+		$('ascend-btn').disabled = pending < 1 || inRift;
+		setText($('ascend-btn'), inRift ? 'Sealed during a Rift run' : 'Ascend');
 		$('sigil-progress').style.width = `${(E.sigilProgress(s) * 100).toFixed(1)}%`;
 		const nextAt = E.lifetimeForSigils(E.sigilsForLifetime(s.lifetimeEarned) + 1);
 		setText($('next-sigil'), `next at ${this.fmt(nextAt)} lifetime mana`);
@@ -485,7 +520,7 @@ export default class UI {
 	}
 
 	updateFeats() {
-		const { s } = this;
+		const s = this.m;
 		const count = Object.keys(s.achievements).length;
 		if (count === this.featCount) return;
 		this.featCount = count;
@@ -511,23 +546,23 @@ export default class UI {
 	bindTome() {
 		const { game } = this;
 		$('opt-sound').addEventListener('change', (e) => {
-			this.s.settings.sound = e.target.checked;
+			this.eachState((st) => { st.settings.sound = e.target.checked; });
 			game.sfx.enabled = e.target.checked;
 		});
 		$('opt-sci').addEventListener('change', (e) => {
-			this.s.settings.notation = e.target.checked ? 'sci' : 'short';
+			this.eachState((st) => { st.settings.notation = e.target.checked ? 'sci' : 'short'; });
 			this.upgradeKey = null;
 			this.slowAcc = 1;
 			this.update(0);
 		});
 		$('opt-fx').addEventListener('change', (e) => {
-			this.s.settings.reducedFx = e.target.checked;
+			this.eachState((st) => { st.settings.reducedFx = e.target.checked; });
 			game.scene.reducedFx = e.target.checked;
 		});
 		const msg = (text) => setText($('save-msg'), text);
 		$('export-btn').addEventListener('click', () => {
 			game.save();
-			const text = E.encodeSave(this.s);
+			const text = E.encodeSave(this.m);
 			const area = $('save-text');
 			area.value = text;
 			const fallback = () => {
@@ -588,6 +623,9 @@ export default class UI {
 			['Upgrades bought (all time)', (s) => this.fmt(s.stats.upgradesBought)],
 			['Ascensions', (s) => this.fmt(s.stats.ascensions)],
 			['Starsigils (spent)', (s) => `${this.fmt(s.sigils)} (${this.fmt(s.sigilsSpent)})`],
+			['Rift runs finished', (s) => this.fmt(s.stats.trials)],
+			['Best rift tier', (s) => (s.stats.bestTier >= 0 ? R.TIERS[s.stats.bestTier].name : 'None yet')],
+			['Astral Shards', (s) => this.fmt(s.shards)],
 			['Feat bonus', (s) => `+${Object.keys(s.achievements).length}%`],
 			['This ascension', (s) => formatTime((Date.now() - s.stats.runStart) / 1000)],
 			['Since the first spark', (s) => formatTime((Date.now() - s.stats.gameStart) / 1000)],
@@ -600,7 +638,7 @@ export default class UI {
 	}
 
 	updateStats() {
-		this.statRows.forEach(({ dd, fn }) => setText(dd, fn(this.s)));
+		this.statRows.forEach(({ dd, fn }) => setText(dd, fn(this.m)));
 	}
 
 	// Tooltip ---------------------------------------------------------------
@@ -621,6 +659,160 @@ export default class UI {
 		], [{ label: 'Collect', primary: true, action: () => {} }]);
 	}
 
+	// Rift ------------------------------------------------------------------
+	buildRift() {
+		$('rift-enter').addEventListener('click', () => {
+			if (this.game.trial) this.showTab('summons');
+			else this.game.enterRift();
+		});
+		$('hud-leave').addEventListener('click', () => this.confirmEndRun());
+		$('wizard-name').addEventListener('input', (e) => {
+			this.m.settings.wizardName = e.target.value.replace(/[^\p{L}\p{N} '_.-]/gu, '').slice(0, 24);
+			this.ladderKey = null;
+		});
+		const grid = $('relic-grid');
+		this.relicCards = RELICS.map((relic) => {
+			const card = el('button', 'talent relic');
+			card.type = 'button';
+			const head = el('div', 'talent-head');
+			const status = el('span', 'talent-level', '');
+			head.append(el('span', 'talent-name', relic.name), status);
+			const cost = el('div', 'talent-cost', '');
+			card.append(img(iconURL(relic.icon, { tier: 5 }), ''), head, el('div', 'talent-desc', relic.desc), cost);
+			card.addEventListener('click', () => {
+				const ok = this.m.relics[relic.id] ? E.toggleRelic(this.m, relic.id) : E.buyRelic(this.m, relic.id);
+				if (ok) {
+					this.game.sfx.buy();
+					this.game.save();
+					this.updateRift();
+				}
+			});
+			grid.append(card);
+			return {
+				relic, card, status, cost,
+			};
+		});
+	}
+
+	updateRiftBadge() {
+		const badge = $('rift-badge');
+		const rift = this.game.currentRift();
+		const played = this.m.riftRecords[rift.id]?.attempts > 0;
+		badge.hidden = played && !this.game.trial;
+		setText(badge, this.game.trial ? 'LIVE' : '!');
+	}
+
+	updateRift() {
+		const { m } = this;
+		const now = Date.now();
+		const rift = this.game.currentRift();
+		if (this.riftKey !== rift.id) {
+			this.riftKey = rift.id;
+			setText($('rift-name'), rift.name);
+			$('rift-mutators').replaceChildren(...rift.mutators.map((id) => {
+				const chip = el('div', 'mutator');
+				chip.append(el('strong', '', MUTATOR_BY_ID[id].name), el('span', '', MUTATOR_BY_ID[id].desc));
+				return chip;
+			}));
+			this.ladderKey = null;
+		}
+		setText($('rift-week'), `${rift.id} · new rift in ${formatTime((rift.end - now) / 1000)}`);
+		const rec = m.riftRecords[rift.id];
+		setText($('rift-best'), rec ? `Best ${this.fmt(rec.best)} · ${rec.attempts} run${rec.attempts === 1 ? '' : 's'}` : 'Your first run this week earns +1 shard');
+		setText($('rift-enter'), this.game.trial ? 'Back to your run' : 'Enter the Rift');
+
+		// Rival echoes cost ~0.1s to simulate; defer so the tab paints first.
+		const ladderKey = `${rift.id}|${rec?.best || 0}|${m.settings.wizardName}`;
+		if (ladderKey !== this.ladderKey) {
+			this.ladderKey = ladderKey;
+			setTimeout(() => this.renderLadder(rift, rec), 0);
+		}
+
+		setText($('shards'), this.fmt(m.shards));
+		this.relicCards.forEach(({
+			relic, card, status, cost,
+		}) => {
+			const owned = !!m.relics[relic.id];
+			const equipped = m.equipped.includes(relic.id);
+			setText(status, equipped ? 'Equipped' : '');
+			if (!owned) setText(cost, `◈ ${relic.cost} Astral Shards`);
+			else setText(cost, equipped ? 'Equipped · click to remove' : `Owned · click to equip (${m.equipped.length}/${E.MAX_EQUIPPED})`);
+			setClass(card, 'maxed', equipped);
+			const can = owned ? (equipped || m.equipped.length < E.MAX_EQUIPPED) : m.shards >= relic.cost;
+			setClass(card, 'affordable', can && !equipped);
+			setClass(card, 'unaffordable', !can);
+			card.disabled = !can;
+		});
+	}
+
+	async renderLadder(rift, rec) {
+		const { rivals, thresholds } = this.game.rivals(rift);
+		const sorted = [...rivals].sort((a, b) => a.score - b.score);
+		$('rift-tiers').replaceChildren(...R.TIERS.map((tier, i) => {
+			const claimed = !!rec?.claimed.includes(i);
+			const card = el('div', `tier tier-${tier.name.toLowerCase()}${claimed ? ' claimed' : ''}`);
+			card.append(
+				el('strong', '', `${tier.name}${claimed ? ' ✓' : ''}`),
+				el('span', '', `Beat ${sorted[tier.rank].name}`),
+				el('span', 'tier-score', this.fmt(thresholds[i])),
+				el('span', 'tier-reward', `+${tier.shards} ◈`),
+			);
+			return card;
+		}));
+		const you = { name: this.m.settings.wizardName || 'You', score: rec?.best || 0 };
+		const standings = await this.game.leaderboard.standings(rift, you);
+		$('rift-ladder').replaceChildren(...standings.map((row) => {
+			const li = el('li', row.you ? 'you' : '');
+			li.append(
+				el('span', 'ladder-name', row.you && this.m.settings.wizardName ? `${row.name} (you)` : row.name),
+				el('span', 'ladder-score', row.you && !rec ? 'no run yet' : this.fmt(row.score)),
+			);
+			return li;
+		}));
+	}
+
+	updateHud() {
+		const t = this.game.trial;
+		const left = R.trialRemaining(t, Date.now());
+		setText($('hud-name'), t.trial.name);
+		setText($('hud-time'), `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`);
+		setClass($('hud-time'), 'urgent', left < 60);
+		setText($('hud-score'), this.fmt(t.runEarned));
+		const cached = this.game.rivalCache.get(t.trial.id);
+		if (!cached) {
+			setText($('hud-next'), '');
+			return;
+		}
+		const next = cached.thresholds.findIndex((min) => t.runEarned < min);
+		setText($('hud-next'), next < 0 ? 'Astral reached!' : `${R.TIERS[next].name} at ${this.fmt(cached.thresholds[next])}`);
+	}
+
+	confirmEndRun() {
+		const t = this.game.trial;
+		if (!t) return;
+		modal('End the run now?', [
+			`Your score of <strong>${this.fmt(t.runEarned)}</strong> counts toward this week's rewards. You can run the rift as often as you like; only your best counts.`,
+		], [
+			{ label: 'Keep going', action: () => {} },
+			{ label: 'End run', primary: true, action: () => this.game.endRift() },
+		]);
+	}
+
+	showTrialResult(trial, result, standings) {
+		const rank = standings.findIndex((row) => row.you) + 1;
+		const lines = [
+			`You gathered <strong>${this.fmt(result.score)} mana</strong> in ${trial.name}${result.newBest ? ', a new personal best' : ''}.`,
+			`That places you <strong>#${rank} of ${standings.length}</strong> on the echo ladder.`,
+		];
+		if (result.newTiers.length) lines.push(`Tiers claimed: <strong>${result.newTiers.map((i) => R.TIERS[i].name).join(', ')}</strong>.`);
+		if (result.shards) lines.push(`You earned <strong>${result.shards} Astral Shard${result.shards === 1 ? '' : 's'}</strong>. Spend them in the Relic vault.`);
+		else lines.push('No new rewards this run. Beat the next echo to claim its tier.');
+		modal('The rift seals', lines, [
+			{ label: 'Back to the spire', action: () => {} },
+			{ label: 'View ladder', primary: true, action: () => this.showTab('rift') },
+		]);
+	}
+
 	// Frame -----------------------------------------------------------------
 	update(dt) {
 		const { s } = this;
@@ -628,9 +820,9 @@ export default class UI {
 		setText($('mana'), this.fmt(Math.floor(s.mana)));
 		const prodBuff = E.buffMult(s, 'prod');
 		setText($('mps'), `${this.fmt(mps)} / sec${prodBuff > 1 ? ` · ×${this.fmt(prodBuff)}` : ''}`);
-		setText($('sigils'), this.fmt(s.sigils));
-		setText($('sigil-bonus'), `+${this.fmt(Math.round((E.computeRates(s).sigilMult - 1) * 100))}% power`);
-		const pending = E.pendingSigils(s);
+		setText($('sigils'), this.fmt(this.m.sigils));
+		setText($('sigil-bonus'), `+${this.fmt(Math.round((E.computeRates(this.m).sigilMult - 1) * 100))}% power`);
+		const pending = E.pendingSigils(this.m);
 		const sigilBadge = $('sigil-badge');
 		sigilBadge.hidden = pending < 1;
 		setText(sigilBadge, this.fmt(pending));
@@ -641,6 +833,7 @@ export default class UI {
 		this.updateBuffs();
 		this.updateUpgrades();
 		if (this.tab === 'summons') this.updateGens();
+		if (this.game.trial) this.updateHud();
 
 		this.slowAcc += dt;
 		if (this.slowAcc >= 0.5) {
@@ -648,6 +841,8 @@ export default class UI {
 			if (this.tab !== 'summons') this.updateGens();
 			this.updateStarfall();
 			this.updateFeats();
+			this.updateRiftBadge();
+			if (this.tab === 'rift') this.updateRift();
 			if (this.tab === 'tome') this.updateStats();
 		}
 	}

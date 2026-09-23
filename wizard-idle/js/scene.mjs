@@ -5,6 +5,7 @@ import {
 	spriteCanvas, textCanvas, PALETTE,
 } from './sprites.mjs';
 import { formatNumber } from './format.mjs';
+import { currentAlignment } from './engine.mjs';
 
 export const W = 320;
 export const H = 180;
@@ -48,6 +49,19 @@ const farHill = (x) => 106 + 9 * Math.sin(x * 0.03 + 1) + 6 * Math.sin(x * 0.071
 const nearHill = (x) => 127 + 5 * Math.sin(x * 0.021 + 2) + 3 * Math.sin(x * 0.093);
 
 const CRYSTAL_SPOTS = [118, 236, 100, 252, 132];
+// Sky regions for aligned constellations (a second one appears under Twin Stars).
+const CONSTELLATION_BOXES = [[180, 8, 54, 34], [72, 10, 52, 30]];
+
+// Each summon owns a fixed star pattern, derived from its id.
+const constellationCache = new Map();
+const constellation = (id) => {
+	if (!constellationCache.has(id)) {
+		const rng = mulberry32([...id].reduce((h, ch) => h * 31 + ch.charCodeAt(0), 7));
+		const pts = Array.from({ length: 6 }, () => [rng(), rng()]).sort((a, b) => a[0] - b[0]);
+		constellationCache.set(id, pts);
+	}
+	return constellationCache.get(id);
+};
 
 export class Scene {
 	constructor(canvas) {
@@ -72,6 +86,7 @@ export class Scene {
 		this.flash = null;
 		this.shake = 0;
 		this.autoFloat = { amount: 0, t: 0 };
+		this.alignPulse = 0;
 		this.reducedFx = false;
 	}
 
@@ -255,6 +270,7 @@ export class Scene {
 		if (this.autoFloat.t > 1) {
 			this.floater(ORB.x + 14, ORB.y - 8, `+${formatNumber(this.autoFloat.amount)}`, PALETTE.L, 0.9);
 			this.autoFloat = { amount: 0, t: 0 };
+			this.alignPulse = 0;
 		}
 	}
 
@@ -281,6 +297,17 @@ export class Scene {
 		}
 		this.flash = { color: colors[0], t: 0.25, max: 0.25 };
 		this.orbFlash = 0.4;
+	}
+
+	alignFx() {
+		this.alignPulse = 1.5;
+		const [bx, by, bw, bh] = CONSTELLATION_BOXES[0];
+		this.burst(bx + bw / 2, by + bh / 2, 30, [PALETTE.C, PALETTE.W, PALETTE.c], 50, 0, 1.2);
+	}
+
+	riftFx() {
+		this.flash = { color: '#d45ad4', t: 0.8, max: 0.8 };
+		this.burst(W / 2, 60, 80, [PALETTE.m, PALETTE.L, PALETTE.W], 120, 0, 1.4);
 	}
 
 	ascendFx() {
@@ -316,6 +343,9 @@ export class Scene {
 		const prodBuff = state.buffs.some((b) => b.kind === 'prod');
 		const clickBuff = state.buffs.some((b) => b.kind === 'click');
 		if (prodBuff) this.drawAurora(t);
+		const trial = state.mode === 'trial';
+		if (trial) this.drawRiftSky(t);
+		(currentAlignment(state)?.gens || []).slice(0, 2).forEach((id, i) => this.drawConstellation(t, dt, id, i));
 		const g = state.gens;
 		if (g.genesis) this.drawGenesis(t, g.genesis);
 		if (g.dragon) this.drawDragons(t, Math.min(3, g.dragon));
@@ -364,6 +394,59 @@ export class Scene {
 				ctx.fillRect(s.x, s.y + 1, 1, 1);
 			}
 		});
+	}
+
+	drawConstellation(t, dt, id, slot) {
+		const { ctx } = this;
+		const [bx, by, bw, bh] = CONSTELLATION_BOXES[slot];
+		const pts = constellation(id).map(([x, y]) => [Math.round(bx + x * bw), Math.round(by + y * bh)]);
+		this.alignPulse = Math.max(0, this.alignPulse - dt);
+		const bright = this.alignPulse > 0 ? '#ffffff' : '#6fe3f2';
+		ctx.fillStyle = '#2f5f86';
+		for (let i = 1; i < pts.length; i += 1) {
+			const [x0, y0] = pts[i - 1];
+			const [x1, y1] = pts[i];
+			const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+			for (let k = 2; k < n - 1; k += 2) ctx.fillRect(Math.round(x0 + ((x1 - x0) * k) / n), Math.round(y0 + ((y1 - y0) * k) / n), 1, 1);
+		}
+		pts.forEach(([x, y], i) => {
+			const on = Math.sin(t * 3 + i * 1.7) > -0.3;
+			ctx.fillStyle = on ? bright : '#9e8fd6';
+			ctx.fillRect(x, y, 1, 1);
+			if (on && i % 2 === 0) {
+				ctx.fillRect(x - 1, y, 1, 1);
+				ctx.fillRect(x + 1, y, 1, 1);
+				ctx.fillRect(x, y - 1, 1, 1);
+				ctx.fillRect(x, y + 1, 1, 1);
+			}
+		});
+		const spr = spriteCanvas(id);
+		ctx.globalAlpha = 0.45 + 0.2 * Math.sin(t * 2);
+		ctx.drawImage(spr, Math.round(bx + bw / 2 - spr.width / 2), Math.round(by + bh / 2 - spr.height / 2));
+		ctx.globalAlpha = 1;
+	}
+
+	// A jagged tear across the sky plus drifting shards marks trial mode.
+	drawRiftSky(t) {
+		const { ctx } = this;
+		ctx.globalAlpha = 0.12;
+		ctx.fillStyle = '#d45ad4';
+		ctx.fillRect(0, 0, W, GROUND);
+		ctx.globalAlpha = 1;
+		let y = 20;
+		for (let x = 0; x < W; x += 1) {
+			y += Math.sin(x * 0.37 + 1.3) * 1.6 + Math.sin(x * 0.11) * 0.7;
+			const w = 1 + Math.round((Math.sin(x * 0.07 + t * 2) + 1) * 0.8);
+			ctx.fillStyle = '#d45ad4';
+			ctx.fillRect(x, Math.round(y) - w, 1, w * 2 + 1);
+			ctx.fillStyle = Math.sin(x * 0.5 + t * 6) > 0.6 ? '#ffffff' : '#ffb0ff';
+			ctx.fillRect(x, Math.round(y), 1, 1);
+		}
+		if (this.rng() < 0.25 && this.particles.length < MAX_PARTICLES) {
+			this.particles.push({
+				x: this.rng() * W, y: 20 + this.rng() * 20, vx: (this.rng() - 0.5) * 8, vy: 10 + this.rng() * 10, g: 0, life: 2, max: 2, color: this.rng() < 0.5 ? '#d45ad4' : '#9e84ff',
+			});
+		}
 	}
 
 	drawAurora(t) {

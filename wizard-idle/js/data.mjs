@@ -420,7 +420,73 @@ GENERATORS.forEach((g) => {
 	.forEach(([n, name], i) => achievements.push({
 		id: `upg-${i}`, name, icon: 'star', desc: `Buy ${n} upgrades (all lifetimes).`, cond: { type: 'upgrades', n },
 	}));
+[[1, 'Rift Walker', 'Finish a Rift Trial.', 'trials'], [10, 'Riftborn', 'Finish 10 Rift Trials.', 'trials'],
+	[1, 'Silver Lining', 'Reach Silver in a Rift Trial.', 'tier'], [2, 'Gold Standard', 'Reach Gold in a Rift Trial.', 'tier'], [3, 'Astral Champion', 'Reach Astral in a Rift Trial.', 'tier']]
+	.forEach(([n, name, desc, type], i) => achievements.push({
+		id: `rift-${i}`, name, icon: 'portal', desc, cond: { type, n },
+	}));
 export const ACHIEVEMENTS = achievements;
+
+// Relics: bought with Astral Shards (earned only in Rift Trials). Up to three
+// can be equipped at once in the main game, so they shape a build.
+export const RELICS = [
+	{
+		id: 'compass', name: 'Star Compass', icon: 'star', cost: 4, desc: 'Aligned summons produce ×5 instead of ×3.', mods: { alignMult: 5 / 3 },
+	},
+	{
+		id: 'monocle', name: 'Owl\'s Monocle', icon: 'owl', cost: 3, desc: 'Wisps linger twice as long and appear 20% more often.', mods: { wispLife: 2, wispInterval: 1 / 1.2 },
+	},
+	{
+		id: 'ember', name: 'Ember Heart', icon: 'flame', cost: 3, desc: 'Focus fills 50% faster and Fireballs hit 50% harder.', mods: { focus: 1.5, fire: 1.5 },
+	},
+	{
+		id: 'hourglass', name: 'Hourglass of Echoes', icon: 'loom', cost: 5, desc: 'Temporal Rift also resets Arcane Surge. Spell cooldowns 15% shorter.', mods: { cd: 0.85 }, special: 'echo',
+	},
+	{
+		id: 'coin', name: 'Miser\'s Coin', icon: 'trophy', cost: 4, desc: 'Summons cost 10% less.', mods: { cost: 0.9 },
+	},
+	{
+		id: 'grimoire', name: 'Gilded Grimoire', icon: 'shelf', cost: 4, desc: 'Upgrades cost 25% less.', mods: { upgradeCost: 0.75 },
+	},
+	{
+		id: 'tides', name: 'Crown of Tides', icon: 'moon', cost: 5, desc: 'Offline efficiency +25% and production +10%.', mods: { offline: 0.25, prod: 1.1 },
+	},
+	{
+		id: 'quill', name: 'Phoenix Quill', icon: 'flame', cost: 6, desc: 'Begin each ascension with 5 minutes of your previous production.', special: 'quill',
+	},
+	{
+		id: 'prism', name: 'Rift Prism', icon: 'portal', cost: 8, desc: 'Casts channel +2% of mana/sec and production +25%.', mods: { clickPct: 0.02, prod: 1.25 },
+	},
+];
+
+// Rift mutators: each weekly trial rolls two. They rewrite the rules for a
+// 15-minute sprint that everyone plays on the same seed.
+export const MUTATORS = [
+	{
+		id: 'wild-skies', name: 'Wild Skies', desc: 'Wisps arrive about every 20s, but summons cost ×1.5.', mods: { wispInterval: 0.17, cost: 1.5 },
+	},
+	{
+		id: 'glass', name: 'Glass Cannon', desc: 'Casts ×10, production ×0.5.', mods: { click: 10, prod: 0.5 },
+	},
+	{
+		id: 'flux', name: 'Arcane Flux', desc: 'Alignments shift every minute and grant ×5.', mods: { alignPeriod: 0.25, alignMult: 5 / 3 },
+	},
+	{
+		id: 'ember', name: 'Ember Storm', desc: 'Focus fills ×3 faster and Fireballs hit ×2.', mods: { focus: 3, fire: 2 },
+	},
+	{
+		id: 'bargain', name: 'Bargain Moon', desc: 'Summons cost ×0.6, upgrades cost ×3.', mods: { cost: 0.6, upgradeCost: 3 },
+	},
+	{
+		id: 'haste', name: 'Quickening', desc: 'Spell cooldowns ×0.25, spell effects last half as long.', mods: { cd: 0.25, dur: 0.5 },
+	},
+	{
+		id: 'twin', name: 'Twin Stars', desc: 'Two summons align at once.', mods: { alignCount: 1 },
+	},
+	{
+		id: 'drought', name: 'Mana Drought', desc: 'Production ×0.4, but every wisp is a Windfall worth ×3.', mods: { prod: 0.4, wispReward: 3 }, special: 'windfall',
+	},
+];
 
 const byId = (arr) => Object.fromEntries(arr.map((x) => [x.id, x]));
 export const GEN_BY_ID = byId(GENERATORS);
@@ -428,3 +494,5 @@ export const UPGRADE_BY_ID = byId(UPGRADES);
 export const SPELL_BY_ID = byId(SPELLS);
 export const TALENT_BY_ID = byId(TALENTS);
 export const ACHIEVEMENT_BY_ID = byId(ACHIEVEMENTS);
+export const RELIC_BY_ID = byId(RELICS);
+export const MUTATOR_BY_ID = byId(MUTATORS);

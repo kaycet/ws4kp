@@ -32,6 +32,13 @@
 
 	<main class="layout">
 		<section class="stage" aria-label="The spire">
+			<div id="rift-hud" class="rift-hud" hidden>
+				<span class="rift-hud-name" id="hud-name">Rift</span>
+				<span class="rift-hud-time" id="hud-time">15:00</span>
+				<span class="rift-hud-score">Score <b id="hud-score">0</b></span>
+				<span class="rift-hud-next" id="hud-next"></span>
+				<button class="btn btn-small" id="hud-leave" type="button">End run</button>
+			</div>
 			<div class="viewport">
 				<canvas id="scene" width="320" height="180" tabindex="0" aria-label="The spire. Click, tap, or press Space to cast. Click drifting golden wisps for blessings."></canvas>
 				<div id="toasts" class="toasts" aria-live="polite"></div>
@@ -51,6 +58,7 @@
 				<button class="tab" role="tab" id="tab-btn-summons" data-tab="summons" aria-selected="true">Summons</button>
 				<button class="tab" role="tab" id="tab-btn-upgrades" data-tab="upgrades" aria-selected="false">Upgrades <span id="upgrade-badge" class="badge" hidden>0</span></button>
 				<button class="tab" role="tab" id="tab-btn-starfall" data-tab="starfall" aria-selected="false">Starfall <span id="sigil-badge" class="badge badge-sigil" hidden>0</span></button>
+				<button class="tab tab-rift" role="tab" id="tab-btn-rift" data-tab="rift" aria-selected="false">Rift <span id="rift-badge" class="badge badge-rift" hidden>!</span></button>
 				<button class="tab" role="tab" id="tab-btn-feats" data-tab="feats" aria-selected="false">Feats</button>
 				<button class="tab" role="tab" id="tab-btn-tome" data-tab="tome" aria-selected="false">Tome</button>
 			</nav>
@@ -95,6 +103,28 @@
 				</div>
 				<h3 class="subhead">Constellation of talents <span class="muted">· <span id="unspent">0</span> unspent</span></h3>
 				<div id="talent-grid" class="talent-grid"></div>
+			</div>
+
+			<div class="panel" id="panel-rift" role="tabpanel" aria-labelledby="tab-btn-rift" hidden>
+				<div class="rift-card">
+					<span class="label" id="rift-week">This week's rift</span>
+					<h2 id="rift-name">The Rift</h2>
+					<p class="rift-pitch">A 15-minute sprint on a shared seed. Everyone faces the same mutators, wisps and alignments, with no talents or relics, so only your play counts. Your spire keeps working while you're away.</p>
+					<div id="rift-mutators" class="mutators"></div>
+					<div class="rift-actions">
+						<button class="btn btn-rift" id="rift-enter" type="button">Enter the Rift</button>
+						<span id="rift-best" class="sub"></span>
+					</div>
+				</div>
+				<h3 class="subhead">Rewards <span class="muted">· beat an echo to claim its tier once per week</span></h3>
+				<div id="rift-tiers" class="tiers"></div>
+				<h3 class="subhead">Echo ladder <span class="muted">· rival mages who ran this exact rift</span></h3>
+				<ol id="rift-ladder" class="ladder"><li class="muted">Scrying the echoes…</li></ol>
+				<label class="name-field" for="wizard-name">Your wizard name
+					<input id="wizard-name" maxlength="24" placeholder="Nameless Wizard" autocomplete="off">
+				</label>
+				<h3 class="subhead">Relic vault <span class="muted">· <span id="shards">0</span> Astral Shards · equip up to 3 in your spire</span></h3>
+				<div id="relic-grid" class="talent-grid"></div>
 			</div>
 
 			<div class="panel" id="panel-feats" role="tabpanel" aria-labelledby="tab-btn-feats" hidden>
