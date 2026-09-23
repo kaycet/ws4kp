@@ -30,6 +30,25 @@ Starfall Spire has the familiar idle loop (12 summons, 158 upgrades, spells, wis
   - Reward tiers are defined as *beating a named echo* (Bronze, Silver, Gold, Astral). Thresholds therefore calibrate themselves to each week's mutators, which can swing scores by 10⁴.
 - **Relics.** Tiers pay out **Astral Shards**, once per tier per week, plus 1 for your first run of the week. Shards buy nine relics, and you equip up to three in your main spire. For example: *Star Compass* (aligned ×5), *Hourglass of Echoes* (Temporal Rift resets Arcane Surge), and *Phoenix Quill* (start each ascension with 5 minutes of production). Choosing a loadout is the long-term strategy layer.
 
+## Look and feel
+
+Everything is drawn at a native 320×180 and animated procedurally:
+
+- **Ambient scene.** Drifting dithered clouds, shooting stars, fireflies, orb motes, a blinking wizard, and additive-blended particles for glow.
+- **Feedback on actions.**
+  - Casts send out a shockwave. Every ~25th cast is a **Lucky** ×5 crit with a big callout and screen shake; luck is keyed off the cast count, so it's deterministic in trials.
+  - Buying a summon raises a pillar of light and a rune ring where it lives in the world. Upgrades ring the wizard in gold.
+  - Fireballs arc across the sky and detonate with a shockwave.
+- **Moments.**
+  - Constellations are traced star by star when the sky aligns.
+  - Pixel-font banners mark feats, alignments, relics and Rift tier milestones.
+  - Ascending lifts the wizard into a pillar of starlight, and entering a Rift tears the sky open.
+- **UI motion.**
+  - The mana counter rolls up and pops on windfalls.
+  - Purchases flash, ready spells glint, and a nearly full Focus meter smoulders.
+  - The title shimmers.
+- **Cost and accessibility.** All motion is stepped to read as pixel art. It holds 60 fps with a full scene and respects `prefers-reduced-motion` and the in-game *Reduced effects* toggle.
+
 ## Architecture
 
 ```

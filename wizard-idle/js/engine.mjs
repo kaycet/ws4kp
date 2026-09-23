@@ -13,6 +13,8 @@ export const SIGIL_DIVISOR = 1e9;
 export const SIGIL_BASE_BONUS = 0.02;
 export const FOCUS_PER_CAST = 0.04;
 export const WISP_LIFE = 13;
+export const LUCKY_EVERY = 25;
+export const LUCKY_MULT = 5;
 const FOCUS_IDLE_GRACE = 1.5;
 const FOCUS_DRAIN = 0.08;
 export const ALIGN_PERIOD = 240;
@@ -346,8 +348,13 @@ export const castSpell = (state, id) => {
 };
 
 // Casting (clicking) & focus --------------------------------------------
+// Lucky casts are a pure function of the cast count (and rift seed), so they
+// never disturb the shared wisp stream and trial runs stay reproducible.
+export const isLuckyCast = (state) => hash32('luck', state.stats.clicks, state.trial?.seed || 0) % LUCKY_EVERY === 0;
+
 export const cast = (state) => {
-	const amount = clickPower(state);
+	const lucky = isLuckyCast(state);
+	const amount = clickPower(state) * (lucky ? LUCKY_MULT : 1);
 	gain(state, amount);
 	state.stats.clicks += 1;
 	state.stats.clickMana += amount;
@@ -361,7 +368,7 @@ export const cast = (state) => {
 		state.stats.fireballs += 1;
 		emit(state, { type: 'fireball', amount: fireball });
 	}
-	return { amount, fireball };
+	return { amount, fireball, lucky };
 };
 
 const autoCast = (state, count) => {

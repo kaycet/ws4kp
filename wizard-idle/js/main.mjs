@@ -71,7 +71,8 @@ const start = (hotData = {}) => {
 		get state() { return this.trial || this.main; },
 	};
 	game.sfx.enabled = main.settings.sound;
-	game.scene.reducedFx = main.settings.reducedFx;
+	const prefersReduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+	game.scene.reducedFx = main.settings.reducedFx || !!prefersReduced;
 	canvas.style.cursor = wandCursor();
 
 	game.save = () => {
@@ -149,6 +150,8 @@ const start = (hotData = {}) => {
 		game.leaderboard.submit(t.trial.id, { name, score: result.score });
 		game.trial = null;
 		resetScene();
+		game.scene.bannerFx('THE RIFT SEALS', '#ffb0ff');
+		game.scene.flash = { color: '#d45ad4', t: 0.6, max: 0.6 };
 		E.drainEvents(t);
 		game.save();
 		ui.rebind();
@@ -205,12 +208,19 @@ const start = (hotData = {}) => {
 					sfx.spell();
 					if (ev.amount) toast('loom', SPELL_BY_ID[ev.id].name, `+${fmt(ev.amount)} mana`, 'mana');
 					break;
+				case 'buyUpgrade':
+					if (visible) scene.upgradeFx();
+					break;
 				case 'align':
-					if (visible) scene.alignFx();
+					if (visible) {
+						scene.alignFx();
+						scene.bannerFx('THE STARS ALIGN', '#b8f6ff');
+					}
 					sfx.tone(988, 0.3, { type: 'sine', vol: 0.3, slide: 1480 });
 					toast(ev.gens[0], 'The stars align:', `${ev.gens.map((id) => GEN_BY_ID[id].name).join(' & ')} ×${formatNumber(ev.mult)}`, 'mana');
 					break;
 				case 'achievement':
+					if (visible) scene.bannerFx('FEAT UNLOCKED');
 					sfx.achievement();
 					toast('trophy', 'Feat:', ACHIEVEMENT_BY_ID[ev.id].name);
 					break;
@@ -223,6 +233,7 @@ const start = (hotData = {}) => {
 					toast(TALENT_BY_ID[ev.id].icon, TALENT_BY_ID[ev.id].name, `rank ${ev.level}`, 'mana');
 					break;
 				case 'relic':
+					scene.bannerFx('RELIC CLAIMED', '#ffb0ff');
 					sfx.upgrade();
 					toast(RELIC_BY_ID[ev.id].icon, 'Relic claimed:', RELIC_BY_ID[ev.id].name, 'rift');
 					break;
@@ -238,9 +249,10 @@ const start = (hotData = {}) => {
 		while (recentCasts.length && t - recentCasts[0] > 1000) recentCasts.shift();
 		if (recentCasts.length >= MAX_MANUAL_CPS) return;
 		recentCasts.push(t);
-		const { amount } = E.cast(game.state);
-		game.scene.castFx(x, y, amount);
-		game.sfx.cast();
+		const { amount, lucky } = E.cast(game.state);
+		game.scene.castFx(x, y, amount, lucky);
+		if (lucky) game.sfx.lucky();
+		else game.sfx.cast();
 	};
 
 	canvas.addEventListener('pointerdown', (e) => {

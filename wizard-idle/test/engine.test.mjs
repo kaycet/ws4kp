@@ -228,3 +228,18 @@ test('number formatting', () => {
 	assert.equal(formatNumber(1e100), '1.00e100');
 	assert.equal(formatTime(3725), '1h 2m');
 });
+
+test('lucky casts are deterministic, rare, and worth x5', () => {
+	const run = () => {
+		const s = fresh();
+		return Array.from({ length: 500 }, () => E.cast(s).lucky);
+	};
+	const a = run();
+	assert.deepEqual(a, run());
+	const hits = a.filter(Boolean).length;
+	assert.ok(hits >= 8 && hits <= 35, `about 1 in ${E.LUCKY_EVERY}, got ${hits}`);
+	const s = fresh();
+	while (!E.isLuckyCast(s)) E.cast(s);
+	const base = E.clickPower(s);
+	assert.equal(E.cast(s).amount, base * E.LUCKY_MULT);
+});

@@ -40,6 +40,15 @@ const setClass = (node, cls, on) => {
 	}
 };
 
+// Restart a one-shot CSS animation class (purchase flash, counter pop).
+const pulse = (node, cls) => {
+	node.classList.remove(cls);
+	// Reading offsetWidth forces a reflow so the animation restarts.
+	// eslint-disable-next-line no-unused-expressions
+	node.offsetWidth;
+	node.classList.add(cls);
+};
+
 const article = (word) => (/^[AEIOU]/i.test(word) ? 'an' : 'a');
 
 const share = (part, total) => {
@@ -197,6 +206,7 @@ export default class UI {
 				const amt = this.s.settings.buyAmount;
 				if (E.buyGen(this.s, g.id, amt)) {
 					this.game.sfx.buy();
+					pulse(row, 'flash');
 					this.update(0);
 				}
 			});
@@ -310,6 +320,7 @@ export default class UI {
 				row.addEventListener('click', () => {
 					if (E.buyUpgrade(this.s, u.id)) {
 						this.game.sfx.upgrade();
+						pulse($('mana'), 'pop');
 						this.update(0);
 					}
 				});
@@ -328,6 +339,8 @@ export default class UI {
 			setText(cost, this.fmt(price));
 		});
 		const badge = $('upgrade-badge');
+		if (affordable > (this.lastAffordable || 0)) pulse(badge, 'pop');
+		this.lastAffordable = affordable;
 		badge.hidden = affordable === 0;
 		setText(badge, String(affordable));
 		$('buy-all').disabled = affordable === 0;
@@ -784,6 +797,14 @@ export default class UI {
 			return;
 		}
 		const next = cached.thresholds.findIndex((min) => t.runEarned < min);
+		const reached = next < 0 ? R.TIERS.length - 1 : next - 1;
+		if (this.hudTier !== undefined && this.hudTrial === t && reached > this.hudTier) {
+			this.game.scene.bannerFx(`${R.TIERS[reached].name.toUpperCase()} REACHED`, '#ffb0ff');
+			this.game.sfx.achievement();
+			pulse($('rift-hud'), 'pop');
+		}
+		this.hudTier = reached;
+		this.hudTrial = t;
 		setText($('hud-next'), next < 0 ? 'Astral reached!' : `${R.TIERS[next].name} at ${this.fmt(cached.thresholds[next])}`);
 	}
 
@@ -817,7 +838,16 @@ export default class UI {
 	update(dt) {
 		const { s } = this;
 		const mps = E.manaPerSecond(s);
-		setText($('mana'), this.fmt(Math.floor(s.mana)));
+		// Ease the counter toward the true value so gains roll up visibly,
+		// and pop it when a single tick lands a big windfall.
+		const target = s.mana;
+		if (this.manaState !== s || !Number.isFinite(this.manaShown) || target < this.manaShown) this.manaShown = target;
+		const jump = target - this.manaShown;
+		if (dt > 0 && jump > Math.max(10, mps * 3)) pulse($('mana'), 'pop');
+		this.manaShown += jump * (dt > 0 ? 0.45 : 1);
+		if (Math.abs(target - this.manaShown) < 1) this.manaShown = target;
+		this.manaState = s;
+		setText($('mana'), this.fmt(Math.floor(this.manaShown)));
 		const prodBuff = E.buffMult(s, 'prod');
 		setText($('mps'), `${this.fmt(mps)} / sec${prodBuff > 1 ? ` · ×${this.fmt(prodBuff)}` : ''}`);
 		setText($('sigils'), this.fmt(this.m.sigils));
@@ -827,6 +857,7 @@ export default class UI {
 		sigilBadge.hidden = pending < 1;
 		setText(sigilBadge, this.fmt(pending));
 		$('focus-fill').style.width = `${Math.min(100, s.focus * 100).toFixed(1)}%`;
+		setClass($('focus-fill').parentElement, 'charged', s.focus >= 0.8);
 		setText($('focus-pct'), `${Math.floor(s.focus * 100)}%`);
 		$('scene-hint').hidden = s.stats.clicks >= 5;
 		this.updateSpells();

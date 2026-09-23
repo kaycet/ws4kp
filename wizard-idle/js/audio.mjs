@@ -71,6 +71,8 @@ export default class Sfx {
 		this.tone(620 + Math.random() * 260, 0.06, { vol: 0.35 });
 	}
 
+	lucky() { this.arp([988, 1319, 1976], 0.035, { type: 'square', vol: 0.35 }); }
+
 	buy() { this.arp([523, 784], 0.05, { vol: 0.35 }); }
 
 	upgrade() { this.arp([523, 659, 784, 1047], 0.05, { type: 'triangle', vol: 0.5 }); }
