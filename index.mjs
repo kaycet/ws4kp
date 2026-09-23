@@ -153,9 +153,6 @@ Object.entries(dataEndpoints).forEach(([name, data]) => {
 	});
 });
 
-// Starfall Spire: a standalone pixel-art idle game served as plain static files
-app.use('/wizard-idle', express.static('./wizard-idle', staticOptions));
-
 if (process.env?.DIST === '1') {
 	// Production ("distribution") mode uses pre-baked files in the dist directory
 	// 'npm run build' and then 'DIST=1 npm start'
